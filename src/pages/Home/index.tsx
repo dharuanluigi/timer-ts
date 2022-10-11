@@ -35,13 +35,13 @@ interface Cycles {
   minutesAmount: number
   createdAt: Date
   interruptedAt?: Date
+  finishedAt?: Date
 }
 
 export function Home() {
   const [cycles, setCycles] = useState<Cycles[]>([])
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null)
   const [amountSecondsPassed, setAmountSecondsPassed] = useState(0)
-
   const { register, handleSubmit, watch, reset } = useForm<NewCycleFormData>({
     resolver: zodResolver(newCycleFormValidationSchema),
     defaultValues: {
@@ -49,6 +49,16 @@ export function Home() {
       minutesAmount: 0,
     },
   })
+
+  const taskNameValue = watch('task')
+  const isSubmitDisabled = !taskNameValue
+  const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId)
+  const totalSeconds = activeCycle ? activeCycle.minutesAmount * 60 : 0
+  const currentSeconds = activeCycle ? totalSeconds - amountSecondsPassed : 0
+  const minutesAmount = Math.floor(currentSeconds / 60)
+  const secondsAmount = currentSeconds % 60
+  const minutes = String(minutesAmount).padStart(2, '0')
+  const seconds = String(secondsAmount).padStart(2, '0')
 
   function handleCreateNewCycle(data: NewCycleFormData) {
     const id = String(new Date().getTime())
@@ -66,33 +76,37 @@ export function Home() {
     reset()
   }
 
-  const taskNameValue = watch('task')
-  const isSubmitDisabled = !taskNameValue
-
-  const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId)
-
-  const totalSeconds = activeCycle ? activeCycle.minutesAmount * 60 : 0
-  const currentSeconds = activeCycle ? totalSeconds - amountSecondsPassed : 0
-  const minutesAmount = Math.floor(currentSeconds / 60)
-  const secondsAmount = currentSeconds % 60
-  const minutes = String(minutesAmount).padStart(2, '0')
-  const seconds = String(secondsAmount).padStart(2, '0')
-
   useEffect(() => {
     let interval: number
 
     if (activeCycle) {
       interval = setInterval(() => {
-        setAmountSecondsPassed(
-          differenceInSeconds(new Date(), activeCycle.createdAt),
+        const secondsDiff = differenceInSeconds(
+          new Date(),
+          activeCycle.createdAt,
         )
+
+        if (secondsDiff > totalSeconds) {
+          setCycles((state) =>
+            state.map((cycle) => {
+              if (cycle.id === activeCycleId) {
+                return { ...cycle, finishedAt: new Date() }
+              } else {
+                return cycle
+              }
+            }),
+          )
+          clearInterval(interval)
+        } else {
+          setAmountSecondsPassed(secondsDiff)
+        }
       }, 1000)
     }
 
     return () => {
       clearInterval(interval)
     }
-  }, [activeCycle])
+  }, [activeCycle, totalSeconds, activeCycleId])
 
   useEffect(() => {
     if (activeCycle) {
@@ -101,8 +115,8 @@ export function Home() {
   }, [minutes, seconds, activeCycle])
 
   function handleInterruptCycle() {
-    setCycles(
-      cycles.map((cycle) => {
+    setCycles((state) =>
+      state.map((cycle) => {
         if (cycle.id === activeCycleId) {
           return { ...cycle, interruptedAt: new Date() }
         } else {
